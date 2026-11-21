@@ -7,15 +7,25 @@ const bcrypt = require("bcryptjs");
 const helmet = require("helmet");
 const crypto = require("crypto");
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
+// Render runs behind a proxy; this is required for secure production cookies.
+app.set("trust proxy", 1);
+const viewsDir = path.join(__dirname, "views");
+const requiredViews = ["home.ejs", "login.ejs", "register.ejs", "dashboard.ejs", "admin.ejs", "message.ejs"];
+for (const file of requiredViews) {
+  if (!fs.existsSync(path.join(viewsDir, file))) {
+    throw new Error(`Missing view file: ${path.join(viewsDir, file)}. Ensure the views/ folder is uploaded to the repository root.`);
+  }
+}
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes("render.com")
     ? { rejectUnauthorized: false } : undefined
 });
 app.set("view engine", "ejs");
-app.set("views", path.join(__dirname, "views"));
+app.set("views", viewsDir);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.urlencoded({ extended: false, limit: "20kb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -91,6 +101,8 @@ async function initDb() {
     );
   }
 }
+
+app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 app.get("/", asyncRoute(async (req,res) => {
   const { rows } = await pool.query("SELECT * FROM products WHERE active=TRUE ORDER BY created_at DESC");
